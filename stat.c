@@ -392,31 +392,6 @@ void ctrlC(int sig){
 }
 
 int main(int argc, char **argv){
-   int pipe[2];
-   if (pipe(pipe) == -1) {
-     fprintf(stderr,"Error pipe\n");
-   }
-   
-   pid_t child=fork();
-   if(child<0){
-      fprintf(stderr,"Error fork\n");
-   }
-   else if(child==0){
-      //child
-      close(pipe[0]);
-      dup2(pipe[1],STDOUT_FILENO);
-      close(pipe[1]);
-      strcpy(argv[0],"./stat");
-      execvp("./stat",argv);
-   }
-   else{
-      //parent
-      close(pipe[1]);
-      read(pipe[0], );
-      close(pipe[0]);
-   }
-
-
    int system_flag=0;
    int user_flag=0;
    int sequential_flag=0;
@@ -439,9 +414,6 @@ int main(int argc, char **argv){
    if(time==-1){
       time=1;
    }
-
-
-
 
    struct sigaction sa1;
    sa1.sa_handler = ctrlZ;
