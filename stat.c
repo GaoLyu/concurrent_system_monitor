@@ -1,18 +1,4 @@
-#include<stdio.h>
-#include<stdlib.h>
-#include<sys/utsname.h>
-#include<sys/sysinfo.h>
-#include <utmp.h>
-#include <unistd.h>
-#include <sys/resource.h>
-#include <string.h>
-#include <getopt.h>
-#include <stdbool.h>
-#include <ctype.h>
-
-struct memory{
-   float phy_used,phy_tot,vir_used,vir_tot;
-};
+#include "stat.h"
 
 void repeat(char *string, int num){
    for(int i=0;i<num;i++){
@@ -33,24 +19,41 @@ void system_info(){
    printf("-----------------------------------\n");
 }
 
-// store the current memory information in 
-// array memories at index i
-void memory(struct memory memories[], int i){
+void write_memory(int fd){
    struct sysinfo info;
    sysinfo(&info);
+   //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!stderr
    //convert byte to gitabyte
    float gb=1073741824.0;
    float p_used=(info.totalram-info.freeram)/gb;
    float p_tot=info.totalram/gb;
    float v_used=p_used+(info.totalswap-info.freeswap)/gb;
    float v_tot=p_tot+info.totalswap/gb;
-   memories[i].phy_used=p_used;
-   memories[i].phy_tot=p_tot;
-   memories[i].vir_used=v_used;
-   memories[i].vir_tot=v_tot;
+   struct memory mem;
+   mem.phy_used=p_used;
+   mem.phy_tot=p_tot;
+   mem.vir_used=v_used;
+   mem.vir_tot=v_tot;
+   if(write(fd, &mem, sizeof(struct memory))==-1){
+      //????????????????????????child process write to stderr, can i direct it to main stderr
+      fprintf(stderr,"child writes memory");
+      exit(1);
+   }
+   close(fd);
 }
 
-// print the memory information at index j
+void get_memory(int fd, struct memory memories[], int i){
+   struct memory mem;
+   if(read(fd, &mem, sizeof(struct memory))==-1){
+      fprintf(stderr,"parent reads memory");
+      //??????????????????????????????
+   }
+   memories[i].phy_used=mem.phy_used;
+   memories[i].phy_tot=mem.phy_tot;
+   memories[i].vir_used=mem.vir_used;
+   memories[i].vir_tot=mem.vir_tot;
+}
+
 void print_one_memory(struct memory memories[], int j){
    printf("%.2f GB / %.2f GB -- %.2f GB / %.2f GB\n",
       memories[j].phy_used,
@@ -59,8 +62,6 @@ void print_one_memory(struct memory memories[], int j){
       memories[j].vir_tot);
 }
 
-// print all stored memory information 
-// from index 0 to i (inclusive)
 void print_memory(struct memory memories[], int i){
    for(int j=0;j<=i;j++){
       print_one_memory(memories,j);
@@ -98,21 +99,35 @@ void print_memory_graphics(struct memory memories[], int i){
    }
 }
 
-void user_session(){
+void write_user_session(int fd){
    struct utmp *u;
    setutent();
+   char string[1024];
    while((u=getutent())){
       if(u->ut_type==USER_PROCESS){
-         printf("%s      %s (%s)\n",
+         sprintf(string, "%s      %s (%s)\n",
             u->ut_user,u->ut_line,u->ut_host);
+         if(write(fd, string, strlen(string))==-1){
+            fprintf(stderr,"child writes user session");
+            exit(1);
+         }
       }
    }
+   close(fd);
 }
 
-// get the cpu usage of the current sample 
-// and store it in array cpu[] at index i
-void cpu_usage(float cpu[],float idle[],int i){
+void get_user_session(int fd,char* buf){
+   char string[1024];
+   memset(string,'\0',1024);
+   while(read(fd,string,1024)>0){
+      strcat(buf,string);
+   }
+   close(fd);
+}
+
+void write_cpu_usage(int fd){
    FILE *fptr;
+   struct cpuUsage cpu; 
    int a1,a2,a3,a4,a5,a6,a7;
    fptr = fopen("/proc/stat","r");
    if(fptr==NULL){
@@ -123,20 +138,28 @@ void cpu_usage(float cpu[],float idle[],int i){
       char b[1024];
       fscanf(fptr,"%s %d %d %d %d %d %d %d",
          b, &a1, &a2, &a3, &a4, &a5, &a6, &a7);
-      float totaluse=a1+a2+a3+a6+a7;
-      float idl=a4+a5;
-      cpu[i]=totaluse;
-      idle[i]=idl;
+      float totaluse=a1+a2+a3+a5+a6+a7;
+      float idl=a4;
+      cpu.util=totaluse;
+      cpu.idle=idl;
       int i=fclose(fptr);
       if(i!=0){
          fprintf(stderr,"Error closing the file.");
          exit(1);
       }
+      write(fd, &cpu, sizeof(struct cpuUsage));
+      close(fd);
    }
 }
 
-// get cpu_usage by comparing the information
-// stored at index i-1 and i
+void get_cpu_usage(int fd, float cpu[],float idle[],int i){
+   struct cpuUsage cpu1;
+   read(fd,&cpu1,sizeof(struct cpuUsage));
+   close(fd);
+   cpu[i]=cpu1.util;
+   idle[i]=cpu1.idle;
+}
+
 float cpu_use_value(float cpu[],float idle[],int i){
    float cpu_usage;
    if(i==0){
@@ -150,10 +173,9 @@ float cpu_use_value(float cpu[],float idle[],int i){
    return cpu_usage;
 }
 
-// print cpu usage
 float cpu_use(float cpu[],float idle[],int i){
    float cpu_usage=cpu_use_value(cpu,idle,i);
-   printf("total cpu use = %.2f %% \n",cpu_usage);
+   printf("total cpu use = %.2f % \n",cpu_usage);
    return cpu_usage;
 }
 
@@ -176,8 +198,6 @@ void cpu_use_graphics(float cpu[],float idle[],int i){
 
 }
 
-// get number of cores by calculating how many iterations needed
-// to get to line with "intr"
 int cpu_core(){
    int num=0;
    FILE *fptr;
@@ -209,243 +229,4 @@ void program_usage(){
    struct rusage usage;
    getrusage(RUSAGE_SELF, &usage);
    printf("Memory usage: %ld kilobytes\n",usage.ru_maxrss);
-}
-
-bool isnumber(char string[]){
-   for(int i=0;i<strlen(string);i++){
-      if(!(isdigit(string[i]))){
-         return false;
-      }
-   }
-   return true;
-}
-
-void get_command(int argc, char **argv, struct option long_options[]){
-   int c;
-   int option_index;
-   int i=0;
-   while((c=getopt_long(argc,argv,"",long_options,&option_index))!=-1){
-      switch(c){
-         case 0:
-            if(strcmp(long_options[option_index].name, "samples")==0){
-               if(optarg){
-                  *(long_options[option_index].flag)=atoi(optarg);
-               }
-            }
-            if(strcmp(long_options[option_index].name, "tdelay")==0){
-               if(optarg){
-                  *(long_options[option_index].flag)=atoi(optarg);
-               }
-            }
-      }
-   }
-   if(*(long_options[3].flag)==-1 && *(long_options[4].flag)==-1){
-      while(optind<argc && i<2){
-         if(isnumber(argv[optind])){
-            *(long_options[i+3].flag)=atoi(argv[optind]);
-            i++;
-         }
-         optind++;
-      }
-   }
-}
-
-void sample_tdelay(int sample,int time){
-   printf("Nbr of samples: %d -- every %d secs\n",sample,time);
-}
-
-void sequential(int sample,int time,struct memory memories[],
-   struct option long_options[],float cpu[],float idle[],int graphics_flag){
-   sample_tdelay(sample,time);
-   int i=0;
-   int num=cpu_core();
-   for(i=0;i<sample;i++){
-      printf(">>> iteration %d\n",i);
-      program_usage();
-      printf("-----------------------------------\n");
-      //print memory
-      if(*(long_options[0].flag)==1 || 
-         (*(long_options[0].flag)!=1 && *(long_options[1].flag)!=1)){
-         printf("### Memory ### (Phys.Used/Tot -- Virtual Used/Tot)\n");
-         repeat("\n",i);
-         memory(memories, i);
-
-         if(graphics_flag==0){
-            print_one_memory(memories,i);
-         }
-         else{
-            print_one_memory_graphics(memories,i);
-         }
-         repeat("\n",sample-1-i);
-         printf("-----------------------------------\n");
-         printf("Number of cores: %d\n",num);
-         cpu_usage(cpu,idle,i);
-         if(graphics_flag==0){
-            cpu_use(cpu,idle,i);
-         }
-         else{
-            cpu_use_graphics(cpu,idle,i);
-         }
-
-         if(*(long_options[0].flag)!=1 && *(long_options[1].flag)!=1){
-            printf("-----------------------------------\n");
-         }
-      }
-      if(*(long_options[1].flag)==1 || 
-         (*(long_options[0].flag)!=1 && *(long_options[1].flag)!=1)){
-         printf("### Sessions/users ###\n");
-         user_session();
-      }
-      sleep(time);
-   }
-}
-
-void system_opt(int sample,int time, struct memory memories[], float cpu[], float idle[], int graphics_flag){
-   int i=0;
-   int num=cpu_core();
-   for(i=0;i<sample;i++){
-      system("clear");
-      sample_tdelay(sample,time);
-      program_usage();
-      printf("-----------------------------------\n");
-      printf("### Memory ### (Phys.Used/Tot -- Virtual Used/Tot)\n");
-      memory(memories,i);
-      if(graphics_flag==0){
-         print_memory(memories,i);
-      }
-      else{
-         print_memory_graphics(memories,i);
-      }
-      repeat("\n",sample-1-i);
-      printf("-----------------------------------\n");
-      printf("Number of cores: %d\n",num);
-      cpu_usage(cpu,idle,i);
-      if(graphics_flag==0){
-         cpu_use(cpu,idle,i);
-      }
-      else{
-         cpu_use_graphics(cpu,idle,i);
-      }
-      sleep(time);  
-   }
-}  
-
-void user_opt(int sample,int time){
-   int i;
-   for(i=0;i<sample;i++){
-      system("clear");
-      sample_tdelay(sample,time);
-      program_usage();
-      printf("-----------------------------------\n");
-      printf("### Sessions/users ###\n");
-      user_session();
-      sleep(time);
-   }
-}
-
-void all(int sample, int time, struct memory memories[],float cpu[], float idle[],int graphics_flag){
-   int i;
-   int num=cpu_core();
-   for(i=0;i<sample;i++){
-      system("clear");
-      sample_tdelay(sample,time);
-      program_usage(); 
-      printf("-----------------------------------\n");
-      printf("### Memory ### (Phys.Used/Tot -- Virtual Used/Tot)\n");
-      memory(memories,i);
-      if(graphics_flag==0){
-         print_memory(memories,i);
-      }
-      else{
-         print_memory_graphics(memories,i);
-      }
-      repeat("\n",sample-1-i);
-      printf("-----------------------------------\n");
-      printf("### Sessions/users ###\n");
-      user_session();
-      printf("-----------------------------------\n");
-      printf("Number of cores: %d\n",num);
-      cpu_usage(cpu,idle,i);
-      if(graphics_flag==0){
-         cpu_use(cpu,idle,i);
-      }
-      else{
-         cpu_use_graphics(cpu,idle,i);
-      }
-      sleep(time);
-   }
-}
-
-void ctrlZ(int sig){
-   return;
-}
-void ctrlC(int sig){
-   char answer;
-   printf("Do you want to quit the program? enter y/n: \n");
-   scanf("%c",&answer);
-   if(answer=='y'){
-      exit(0);
-   }
-   else{
-      return;
-   }
-}
-
-int main(int argc, char **argv){
-   int system_flag=0;
-   int user_flag=0;
-   int sequential_flag=0;
-   int graphics_flag=0;
-   int sample=-1;
-   int time=-1;
-   struct option long_options[]={
-      {"system",0,&system_flag,1},
-      {"user",0,&user_flag,1},
-      {"sequential",0,&sequential_flag,1},
-      {"samples",2,&sample,10},
-      {"tdelay",2,&time,1},
-      {"graphics",0,&graphics_flag,1},
-      {0,0,0,0}
-   };
-   get_command(argc,argv,long_options);
-   if(sample==-1){
-      sample=10;
-   }
-   if(time==-1){
-      time=1;
-   }
-
-   struct sigaction sa1;
-   sa1.sa_handler = ctrlZ;
-   sigemptyset(&sa1.sa_mask);
-   sa1.sa_flags = 0;
-   sigaction(SIGTSTP, &sa1, NULL);
-
-   struct sigaction sa2;
-   sa2.sa_handler = ctrlC;
-   sigemptyset(&sa2.sa_mask);
-   sa2.sa_flags = 0;
-   sigaction(SIGINT, &sa2, NULL);
-
-
-   struct memory memories[sample]; 
-   float cpu[sample];
-   float idle[sample];
-   if(sequential_flag==0){
-      if(system_flag==1 && user_flag==0){
-         system_opt(sample,time,memories,cpu,idle,graphics_flag);
-      }
-      
-      else if(user_flag==1 && system_flag==0){
-         user_opt(sample,time);
-      }
-      else{
-         all(sample,time,memories,cpu,idle,graphics_flag);
-      }
-   }
-   else{
-      sequential(sample,time,memories,long_options,cpu,idle,graphics_flag);
-   }
-   system_info();
-   return 0;
 }
