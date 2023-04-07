@@ -44,12 +44,193 @@ void sample_tdelay(int sample,int time){
    printf("Nbr of samples: %d -- every %d secs\n",sample,time);
 }
 
+
+void get_cpu_memory(struct memory memories[],float cpu[],float idle[],int iter){
+   pid_t child_cpu, child_memory;
+   int status0,status1;
+   int fd[2][2];
+   if(pipe(fd[0])==-1){
+      fprintf(stderr,"error create pipe for child cpu");
+      exit(1);
+   }
+   child_cpu=fork();
+   if(child_cpu<0){
+      fprintf(stderr,"fork child cpu process");
+      exit(1);
+   }
+   else if(child_cpu==0){
+      //child cpu
+      //close all reading ends
+      close(fd[0][0]);
+      write_cpu_usage(fd[0][1]);
+      exit(0);
+   }
+   else{
+      //parent
+      close(fd[0][1]);
+      if(pipe(fd[1])==-1){
+         fprintf(stderr,"error create pipe for child memory");
+         exit(1);
+      }
+      child_memory=fork();
+      if(child_memory<0){
+         fprintf(stderr,"fork child memory process");
+         exit(1);
+      }
+      else if(child_memory==0){
+         //child memory
+         close(fd[1][0]);
+         close(fd[0][0]);
+         write_memory(fd[1][1]);
+         exit(0);
+      }
+      else{
+         //parent
+         close(fd[1][1]);
+         while(waitpid(child_cpu,&status0,WNOHANG)==0 || waitpid(child_memory,&status1,WNOHANG)==0){
+
+         }
+         if(WEXITSTATUS(status0)==1 || WEXITSTATUS(status1)==1){
+            exit(1);
+         } 
+         get_cpu_usage(fd[0][0],cpu,idle,iter);
+         get_memory(fd[1][0],memories,iter);
+      }
+   }
+}
+
+void get_user(char *buf){
+   pid_t child_user;
+   int status;
+   int fd[2];
+   if(pipe(fd)==-1){
+      fprintf(stderr,"error create pipe for child user");
+      exit(1);
+   }
+   child_user=fork();
+   if(child_user<0){
+      fprintf(stderr,"fork child cpu process");
+      exit(1);
+   }
+   else if(child_user==0){
+      //child
+      close(fd[0]);
+      write_user_session(fd[1]);
+      exit(0);
+   }
+   else{
+      //parent
+      close(fd[1]);
+      waitpid(child_user,&status,0);
+      if(WEXITSTATUS(status)==1){
+         exit(1);
+      }
+      get_user_session(fd[0],buf);
+   }
+}
+
+void get_cpu_memory_user(struct memory memories[],float cpu[],float idle[],char *buf,int iter){
+   pid_t child_cpu, child_memory, child_user;
+   int status0,status1,status2;
+   int fd[3][2];
+   if(pipe(fd[0])==-1){
+      fprintf(stderr,"error create pipe for child cpu");
+      exit(1);
+   }
+   child_cpu=fork();
+   if(child_cpu<0){
+      fprintf(stderr,"fork child cpu process");
+      exit(1);
+   }
+   else if(child_cpu==0){
+      //child cpu
+      //close all reading ends
+      close(fd[0][0]);
+      write_cpu_usage(fd[0][1]);
+      exit(0);
+   }
+   else{
+      //parent
+      close(fd[0][1]);
+      if(pipe(fd[1])==-1){
+         fprintf(stderr,"error create pipe for child memory");
+         exit(1);
+      }
+      child_memory=fork();
+      if(child_memory<0){
+         fprintf(stderr,"fork child memory process");
+         exit(1);
+      }
+      else if(child_memory==0){
+         //child memory
+         close(fd[1][0]);
+         close(fd[0][0]);
+         write_memory(fd[1][1]);
+         exit(0);
+      }
+      else{
+         //parent
+         close(fd[1][1]);
+         if(pipe(fd[2])==-1){
+            fprintf(stderr,"error create pipe for child user");
+            exit(1);
+         }
+         child_user=fork();
+         if(child_user<0){
+            fprintf(stderr,"fork child user process");
+            exit(1);
+         }
+         else if(child_user==0){
+            //child memory
+            close(fd[2][0]);
+            close(fd[1][0]);
+            close(fd[0][0]);
+            write_user_session(fd[2][1]);
+            exit(0);
+         }
+         else{
+            //parent
+            close(fd[2][1]);
+            while(waitpid(child_cpu,&status0,WNOHANG)==0 || waitpid(child_memory,&status1,WNOHANG)==0 || waitpid(child_user,&status2,WNOHANG)==0){
+
+            }
+            if(WEXITSTATUS(status0)==1 || WEXITSTATUS(status1)==1 || WEXITSTATUS(status0)==1){
+               exit(1);
+            }
+            get_cpu_usage(fd[0][0],cpu,idle,iter);
+            get_memory(fd[1][0],memories,iter);
+            get_user_session(fd[2][0],buf);
+         }
+      }
+   }
+}
+
+
+
+
+
+
+
+
+
+
+
 void sequential(int sample,int time,struct memory memories[],
-   struct option long_options[],float cpu[],float idle[],char buf[][102400],int graphics_flag){
+   struct option long_options[],float cpu[],float idle[],char buf[102400],int graphics_flag){
+   
    sample_tdelay(sample,time);
    int i=0;
    int num=cpu_core();
    for(i=0;i<sample;i++){
+      if(*(long_options[0].flag)==1 && *(long_options[0].flag)!=1){
+         get_cpu_memory(memories,cpu,idle,i);
+      }
+      else if(*(long_options[0].flag)!=1 && *(long_options[0].flag)==1){
+         get_user(buf);
+      }
+      else{
+         get_cpu_memory_user(memories,cpu,idle,buf,i);
+      }
       printf(">>> iteration %d\n",i);
       program_usage();
       printf("-----------------------------------\n");
@@ -83,7 +264,7 @@ void sequential(int sample,int time,struct memory memories[],
       if(*(long_options[1].flag)==1 || 
          (*(long_options[0].flag)!=1 && *(long_options[1].flag)!=1)){
          printf("### Sessions/users ###\n");
-         printf("%s",buf[i]);
+         printf("%s",buf);
       }
       sleep(time);
    }
@@ -93,12 +274,12 @@ void system_opt(int sample,int time, struct memory memories[], float cpu[], floa
    int i=0;
    int num=cpu_core();
    for(i=0;i<sample;i++){
+      get_cpu_memory(memories,cpu,idle,i);
       system("clear");
       sample_tdelay(sample,time);
       program_usage();
       printf("-----------------------------------\n");
       printf("### Memory ### (Phys.Used/Tot -- Virtual Used/Tot)\n");
-      
       if(graphics_flag==0){
          print_memory(memories,i);
       }
@@ -119,23 +300,25 @@ void system_opt(int sample,int time, struct memory memories[], float cpu[], floa
    }
 }  
 
-void user_opt(int sample,int time, char buf[][102400]){
+void user_opt(int sample,int time, char*buf){
    int i;
    for(i=0;i<sample;i++){
+      get_user(buf);
       system("clear");
       sample_tdelay(sample,time);
       program_usage();
       printf("-----------------------------------\n");
       printf("### Sessions/users ###\n");
-      printf("%s",buf[i]);
+      printf("%s",buf);
       sleep(time);
    }
 }
 
-void all(int sample, int time, struct memory memories[],float cpu[], float idle[],char buf[][102400],int graphics_flag){
+void all(int sample, int time, struct memory memories[],float cpu[], float idle[],char *buf,int graphics_flag){
    int i;
    int num=cpu_core();
    for(i=0;i<sample;i++){
+      get_cpu_memory_user(memories,cpu,idle,buf,i);
       system("clear");
       sample_tdelay(sample,time);
       program_usage(); 
@@ -150,7 +333,7 @@ void all(int sample, int time, struct memory memories[],float cpu[], float idle[
       repeat("\n",sample-1-i);
       printf("-----------------------------------\n");
       printf("### Sessions/users ###\n");
-      printf("%s",buf[i]);
+      printf("%s",buf);
       printf("-----------------------------------\n");
       printf("Number of cores: %d\n",num);
       if(graphics_flag==0){
@@ -177,172 +360,6 @@ void ctrlC(int sig){
       return;
    }
 }
-
-
-
-void get_cpu_memory(struct memory memories[],float cpu[],float idle[],int iter){
-   pid_t child_cpu, child_memory;
-   int status0,status1;
-   int fd[2][2];
-   if(pipe(fd[0])==-1){
-      fprintf(stderr,"error create pipe for child cpu");
-      exit(1);
-   }
-   child_cpu=fork();
-   if(child_cpu<0){
-      fprintf(stderr,"fork child cpu process");
-      exit(1);
-   }
-   else if(child_cpu==0){
-      //child cpu
-      //close all reading ends
-      close(fd[0][0]);
-      write_cpu_usage(fd[0][1]);
-      exit(0);
-   }
-   else{
-      //parent
-      if(pipe(fd[1])==-1){
-         fprintf(stderr,"error create pipe for child memory");
-         exit(1);
-      }
-      child_memory=fork();
-      if(child_memory<0){
-         fprintf(stderr,"fork child memory process");
-         exit(1);
-      }
-      else if(child_memory==0){
-         //child memory
-         close(fd[1][0]);
-         close(fd[0][0]);
-         write_memory(fd[1][1]);
-         exit(0);
-      }
-      else{
-         //parent
-         while(waitpid(child_cpu,&status0,WNOHANG)==0 || waitpid(child_memory,&status1,WNOHANG)==0){
-
-         }
-         if(WEXITSTATUS(status0)==1 || WEXITSTATUS(status1)==1){
-            exit(1);
-         }
-         close(fd[0][1]);
-         close(fd[1][1]);
-         get_cpu_usage(fd[0][0],cpu,idle,iter);
-         get_memory(fd[1][0],memories,iter);
-      }
-   }
-}
-
-void get_user(char buf[][102400],int iter){
-   pid_t child_user;
-   int status;
-   int fd[2];
-   if(pipe(fd)==-1){
-      fprintf(stderr,"error create pipe for child user");
-      exit(1);
-   }
-   child_user=fork();
-   if(child_user<0){
-      fprintf(stderr,"fork child cpu process");
-      exit(1);
-   }
-   else if(child_user==0){
-      //child
-      close(fd[0]);
-      write_user_session(fd[1]);
-      exit(0);
-   }
-   else{
-      //parent
-      close(fd[1]);
-      waitpid(child_user,&status,0);
-      if(WEXITSTATUS(status)==1){
-         exit(1);
-      }
-      get_user_session(fd[0],buf[iter]);
-   }
-}
-
-void get_cpu_memory_user(struct memory memories[],float cpu[],float idle[],char buf[][102400],int iter){
-   pid_t child_cpu, child_memory, child_user;
-   int status0,status1,status2;
-   int fd[3][2];
-   if(pipe(fd[0])==-1){
-      fprintf(stderr,"error create pipe for child cpu");
-      exit(1);
-   }
-   child_cpu=fork();
-   if(child_cpu<0){
-      fprintf(stderr,"fork child cpu process");
-      exit(1);
-   }
-   else if(child_cpu==0){
-      //child cpu
-      //close all reading ends
-      close(fd[0][0]);
-      write_cpu_usage(fd[0][1]);
-      exit(0);
-   }
-   else{
-      //parent
-      if(pipe(fd[1])==-1){
-         fprintf(stderr,"error create pipe for child memory");
-         exit(1);
-      }
-      child_memory=fork();
-      if(child_memory<0){
-         fprintf(stderr,"fork child memory process");
-         exit(1);
-      }
-      else if(child_memory==0){
-         //child memory
-         close(fd[1][0]);
-         close(fd[0][0]);
-         write_memory(fd[1][1]);
-         exit(0);
-      }
-      else{
-         //parent
-         if(pipe(fd[2])==-1){
-            fprintf(stderr,"error create pipe for child user");
-            exit(1);
-         }
-         child_user=fork();
-         if(child_user<0){
-            fprintf(stderr,"fork child user process");
-            exit(1);
-         }
-         else if(child_user==0){
-            //child memory
-            close(fd[2][0]);
-            close(fd[1][0]);
-            close(fd[0][0]);
-            write_user_session(fd[2][1]);
-            exit(0);
-         }
-         else{
-            //parent
-
-            while(waitpid(child_cpu,&status0,WNOHANG)==0 || waitpid(child_memory,&status1,WNOHANG)==0 || waitpid(child_user,&status2,WNOHANG)==0){
-
-            }
-            if(WEXITSTATUS(status0)==1 || WEXITSTATUS(status1)==1 || WEXITSTATUS(status0)==1){
-               exit(1);
-            }
-            close(fd[0][1]);
-            close(fd[1][1]);
-            close(fd[2][1]);
-            get_cpu_usage(fd[0][0],cpu,idle,iter);
-            get_memory(fd[1][0],memories,iter);
-            get_user_session(fd[2][0],buf[iter]);
-         }
-      }
-   }
-}
-
-
-
 
 int main(int argc, char **argv){
    struct sigaction sa1;
@@ -383,42 +400,41 @@ int main(int argc, char **argv){
    struct memory memories[sample]; 
    float cpu[sample];
    float idle[sample];
-   char buf[sample][102400];
-   for(int j=0;j<sample;j++){
-      memset(buf[j],'\0',102400);
-   }
+   char buf[102400];
+   
+   
 
 
-   int iter=0;
-   while(iter<sample){
-      if(system_flag==1 && user_flag==0){
-         // cpu and memory
-         get_cpu_memory(memories,cpu,idle,iter);
+   // int iter=0;
+   // while(iter<sample){
+   //    if(system_flag==1 && user_flag==0){
+   //       // cpu and memory
+   //       get_cpu_memory(memories,cpu,idle,iter);
 
-         //////debug!!!!!!!!!!!!!!!!!!
-         // printf("cpu:%f\tidle:%f\tcpu_use:%f\n",cpu[iter],idle[iter],cpu_use_value(cpu,idle,iter));
-         // sleep(1);
-      }
+   //       //////debug!!!!!!!!!!!!!!!!!!
+   //       // printf("cpu:%f\tidle:%f\tcpu_use:%f\n",cpu[iter],idle[iter],cpu_use_value(cpu,idle,iter));
+   //       // sleep(1);
+   //    }
       
-      else if(user_flag==1 && system_flag==0){
-         // user
-         get_user(buf,iter);
-      }
-      else{
-         // user, cpu and memory
-         get_cpu_memory_user(memories,cpu,idle,buf,iter);
-      }
-      iter++;
-   }
+   //    else if(user_flag==1 && system_flag==0){
+   //       // user
+   //       get_user(buf,iter);
+   //    }
+   //    else{
+   //       // user, cpu and memory
+   //       get_cpu_memory_user(memories,cpu,idle,buf,iter);
+   //    }
+   //    iter++;
+   // }
 
    if(sequential_flag==0){
       if(system_flag==1 && user_flag==0){
          //cpu, memory
-         for(int i=0;i<sample;i++){
-            printf("cpu:%f\tidle:%f\tcpu_use:%f\n",cpu[i],idle[i],cpu_use_value(cpu,idle,i));
+         // for(int i=0;i<sample;i++){
+         //    printf("cpu:%f\tidle:%f\tcpu_use:%f\n",cpu[i],idle[i],cpu_use_value(cpu,idle,i));
          
-         }
-         //sleep(1);
+         // }
+         
          system_opt(sample,time,memories,cpu,idle,graphics_flag);
       }
       

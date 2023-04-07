@@ -117,6 +117,7 @@ void write_user_session(int fd){
 }
 
 void get_user_session(int fd,char* buf){
+   memset(buf,'\0',102400);
    char string[1024];
    memset(string,'\0',1024);
    while(read(fd,string,1024)>0){
@@ -175,7 +176,7 @@ float cpu_use_value(float cpu[],float idle[],int i){
 
 float cpu_use(float cpu[],float idle[],int i){
    float cpu_usage=cpu_use_value(cpu,idle,i);
-   printf("total cpu use = %.2f % \n",cpu_usage);
+   printf("total cpu use = %.2f %% \n",cpu_usage);
    return cpu_usage;
 }
 
