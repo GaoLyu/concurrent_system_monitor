@@ -276,6 +276,8 @@ void system_opt(int sample,int time, struct memory memories[], float cpu[], floa
    for(i=0;i<sample;i++){
       get_cpu_memory(memories,cpu,idle,i);
       system("clear");
+      // printf("\033[%dB",i);
+      // printf("\033[H");
       sample_tdelay(sample,time);
       program_usage();
       printf("-----------------------------------\n");
