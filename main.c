@@ -207,14 +207,6 @@ void get_cpu_memory_user(struct memory memories[],float cpu[],float idle[],char 
 
 
 
-
-
-
-
-
-
-
-
 void sequential(int sample,int time,struct memory memories[],
    struct option long_options[],float cpu[],float idle[],char buf[102400],int graphics_flag){
    
@@ -276,9 +268,8 @@ void system_opt(int sample,int time, struct memory memories[], float cpu[], floa
    for(i=0;i<sample;i++){
       get_cpu_memory(memories,cpu,idle,i);
       //system("clear");
-      printf("\x1b[H\x1b[2J");
-      // printf("\033[%dB",i);
-      // printf("\033[H");
+      printf("\033[H\033[J");
+      //printf("\x1b[H\x1b[2J");
       sample_tdelay(sample,time);
       program_usage();
       printf("-----------------------------------\n");
@@ -308,7 +299,8 @@ void user_opt(int sample,int time, char*buf){
    for(i=0;i<sample;i++){
       get_user(buf);
       //system("clear");
-      printf("\x1b[H\x1b[2J");
+      printf("\033[H\033[J");
+      //printf("\x1b[H\x1b[2J");
       sample_tdelay(sample,time);
       program_usage();
       printf("-----------------------------------\n");
@@ -324,7 +316,8 @@ void all(int sample, int time, struct memory memories[],float cpu[], float idle[
    for(i=0;i<sample;i++){
       get_cpu_memory_user(memories,cpu,idle,buf,i);
       //system("clear");
-      printf("\x1b[H\x1b[2J");
+      printf("\033[H\033[J");
+      //printf("\x1b[H\x1b[2J");
       sample_tdelay(sample,time);
       program_usage(); 
       printf("-----------------------------------\n");
@@ -359,7 +352,7 @@ void ctrlC(int sig){
    printf("Do you want to quit the program? enter y/n: \n");
    scanf("%c",&answer);
    if(answer=='y'){
-      while(wait()>0){}
+      while(wait(NULL)>0){}
       exit(0);
    }
    else{

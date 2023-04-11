@@ -79,6 +79,3 @@ int cpu_core();
 
 // print program usage
 void program_usage();
-
-
-

@@ -22,7 +22,6 @@ void system_info(){
 void write_memory(int fd){
    struct sysinfo info;
    sysinfo(&info);
-   //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!stderr
    //convert byte to gitabyte
    float gb=1073741824.0;
    float p_used=(info.totalram-info.freeram)/gb;
@@ -35,7 +34,6 @@ void write_memory(int fd){
    mem.vir_used=v_used;
    mem.vir_tot=v_tot;
    if(write(fd, &mem, sizeof(struct memory))==-1){
-      //????????????????????????child process write to stderr, can i direct it to main stderr
       fprintf(stderr,"child writes memory");
       exit(1);
    }
@@ -46,7 +44,6 @@ void get_memory(int fd, struct memory memories[], int i){
    struct memory mem;
    if(read(fd, &mem, sizeof(struct memory))==-1){
       fprintf(stderr,"parent reads memory");
-      //??????????????????????????????
    }
    memories[i].phy_used=mem.phy_used;
    memories[i].phy_tot=mem.phy_tot;
