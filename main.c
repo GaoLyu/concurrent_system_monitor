@@ -275,7 +275,8 @@ void system_opt(int sample,int time, struct memory memories[], float cpu[], floa
    int num=cpu_core();
    for(i=0;i<sample;i++){
       get_cpu_memory(memories,cpu,idle,i);
-      system("clear");
+      //system("clear");
+      printf("\x1b[H\x1b[2J");
       // printf("\033[%dB",i);
       // printf("\033[H");
       sample_tdelay(sample,time);
@@ -306,7 +307,8 @@ void user_opt(int sample,int time, char*buf){
    int i;
    for(i=0;i<sample;i++){
       get_user(buf);
-      system("clear");
+      //system("clear");
+      printf("\x1b[H\x1b[2J");
       sample_tdelay(sample,time);
       program_usage();
       printf("-----------------------------------\n");
@@ -321,7 +323,8 @@ void all(int sample, int time, struct memory memories[],float cpu[], float idle[
    int num=cpu_core();
    for(i=0;i<sample;i++){
       get_cpu_memory_user(memories,cpu,idle,buf,i);
-      system("clear");
+      //system("clear");
+      printf("\x1b[H\x1b[2J");
       sample_tdelay(sample,time);
       program_usage(); 
       printf("-----------------------------------\n");
@@ -356,6 +359,7 @@ void ctrlC(int sig){
    printf("Do you want to quit the program? enter y/n: \n");
    scanf("%c",&answer);
    if(answer=='y'){
+      while(wait()>0){}
       exit(0);
    }
    else{
@@ -403,40 +407,9 @@ int main(int argc, char **argv){
    float cpu[sample];
    float idle[sample];
    char buf[102400];
-   
-   
-
-
-   // int iter=0;
-   // while(iter<sample){
-   //    if(system_flag==1 && user_flag==0){
-   //       // cpu and memory
-   //       get_cpu_memory(memories,cpu,idle,iter);
-
-   //       //////debug!!!!!!!!!!!!!!!!!!
-   //       // printf("cpu:%f\tidle:%f\tcpu_use:%f\n",cpu[iter],idle[iter],cpu_use_value(cpu,idle,iter));
-   //       // sleep(1);
-   //    }
-      
-   //    else if(user_flag==1 && system_flag==0){
-   //       // user
-   //       get_user(buf,iter);
-   //    }
-   //    else{
-   //       // user, cpu and memory
-   //       get_cpu_memory_user(memories,cpu,idle,buf,iter);
-   //    }
-   //    iter++;
-   // }
 
    if(sequential_flag==0){
       if(system_flag==1 && user_flag==0){
-         //cpu, memory
-         // for(int i=0;i<sample;i++){
-         //    printf("cpu:%f\tidle:%f\tcpu_use:%f\n",cpu[i],idle[i],cpu_use_value(cpu,idle,i));
-         
-         // }
-         
          system_opt(sample,time,memories,cpu,idle,graphics_flag);
       }
       
